@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 export default function AuthCodeError() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-blue-500 to-purple-600 px-4">
       <div className="max-w-md w-full bg-white rounded-lg shadow-xl p-8 text-center">
         <div className="mb-4">
           <svg className="mx-auto h-12 w-12 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
