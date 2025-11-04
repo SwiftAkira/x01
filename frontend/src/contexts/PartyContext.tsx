@@ -8,6 +8,7 @@ import { io, Socket } from 'socket.io-client';
 import { partyApi } from '@/services/api';
 import { getStorageItem } from '@/utils/storage';
 import { STORAGE_KEYS } from '@/utils/constants';
+import { locationService, LocationPosition } from '@/services/location.service';
 import type { 
   Party, 
   LocationBroadcast, 
@@ -31,7 +32,12 @@ interface PartyContextState {
   joinParty: (code: string) => Promise<void>;
   leaveParty: () => Promise<void>;
   
-  // Location actions
+  // Location state and actions
+  isLocationSharing: boolean;
+  locationError: string | null;
+  currentUserLocation: LocationPosition | null;
+  startLocationSharing: () => Promise<void>;
+  stopLocationSharing: () => void;
   updateLocation: (location: LocationUpdatePayload['location']) => void;
   
   // Message actions
@@ -51,7 +57,13 @@ export const PartyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isConnected, setIsConnected] = useState(false);
   const [messages, setMessages] = useState<MessageBroadcast[]>([]);
   
+  // Location tracking state
+  const [isLocationSharing, setIsLocationSharing] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [currentUserLocation, setCurrentUserLocation] = useState<LocationPosition | null>(null);
+  
   const socketRef = useRef<Socket | null>(null);
+  const locationUpdateThrottleRef = useRef<NodeJS.Timeout | null>(null);
 
   /**
    * Initialize WebSocket connection
@@ -339,6 +351,97 @@ export const PartyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [currentParty]);
 
   /**
+   * Start location sharing
+   */
+  const startLocationSharing = useCallback(async () => {
+    try {
+      setLocationError(null);
+
+      // Check if geolocation is supported
+      if (!locationService.isSupported()) {
+        throw new Error('Geolocation is not supported by your browser');
+      }
+
+      // Request permission and get initial position
+      const initialPosition = await locationService.requestPermission();
+      setCurrentUserLocation(initialPosition);
+      setIsLocationSharing(true);
+
+      // Start watching position with callback
+      locationService.startWatching(
+        (position: LocationPosition) => {
+          setCurrentUserLocation(position);
+
+          // Throttle location updates to server (max 1 per second)
+          if (!locationUpdateThrottleRef.current && currentParty) {
+            locationUpdateThrottleRef.current = setTimeout(() => {
+              locationUpdateThrottleRef.current = null;
+            }, 1000);
+
+            // Send location to party via WebSocket
+            if (socketRef.current?.connected) {
+              socketRef.current.emit('party:update', {
+                partyId: currentParty.id,
+                location: {
+                  latitude: position.latitude,
+                  longitude: position.longitude,
+                  speed: position.speed || 0,
+                  heading: position.heading || 0,
+                  accuracy: position.accuracy,
+                },
+              });
+            }
+          }
+        },
+        (err) => {
+          console.error('Location tracking error:', err);
+          setLocationError(err.message);
+          setIsLocationSharing(false);
+        }
+      );
+
+    } catch (err: any) {
+      console.error('Failed to start location sharing:', err);
+      setLocationError(err.message || 'Failed to start location sharing');
+      setIsLocationSharing(false);
+    }
+  }, [currentParty]);
+
+  /**
+   * Stop location sharing
+   */
+  const stopLocationSharing = useCallback(() => {
+    locationService.stopWatching();
+    setIsLocationSharing(false);
+    setLocationError(null);
+  }, []);
+
+  /**
+   * Auto-start location sharing when joining a party
+   */
+  useEffect(() => {
+    if (currentParty && !isLocationSharing) {
+      startLocationSharing();
+    } else if (!currentParty && isLocationSharing) {
+      stopLocationSharing();
+    }
+  }, [currentParty, isLocationSharing, startLocationSharing, stopLocationSharing]);
+
+  /**
+   * Cleanup location tracking on unmount
+   */
+  useEffect(() => {
+    return () => {
+      if (isLocationSharing) {
+        locationService.stopWatching();
+      }
+      if (locationUpdateThrottleRef.current) {
+        clearTimeout(locationUpdateThrottleRef.current);
+      }
+    };
+  }, [isLocationSharing]);
+
+  /**
    * Clear error state
    */
   const clearError = useCallback(() => {
@@ -354,6 +457,11 @@ export const PartyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     createParty,
     joinParty,
     leaveParty,
+    isLocationSharing,
+    locationError,
+    currentUserLocation,
+    startLocationSharing,
+    stopLocationSharing,
     updateLocation,
     sendMessage,
     messages,

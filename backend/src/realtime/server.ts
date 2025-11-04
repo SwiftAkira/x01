@@ -19,6 +19,7 @@ import type {
 interface AuthenticatedSocket extends Socket {
   userId?: number;
   email?: string;
+  lastLocationUpdate?: number;
 }
 
 /**
@@ -43,7 +44,7 @@ export async function createRealtimeServer() {
   io.adapter(createAdapter(pubClient, subClient));
 
   // Authentication middleware
-  io.use(async (socket: AuthenticatedSocket, next: any) => {
+  io.use(async (socket: AuthenticatedSocket, next) => {
     try {
       const token = socket.handshake.auth['token'] || socket.handshake.query['token'];
 
@@ -211,9 +212,20 @@ export async function createRealtimeServer() {
       }
     });
 
-    // Location update event
+    // Location update event with rate limiting (max 1/sec per user)
     socket.on('party:update', async (data: PartyUpdateEvent): Promise<void> => {
       try {
+        // Rate limiting: Max 1 update per second per user
+        const now = Date.now();
+        const minInterval = 1000; // 1 second
+
+        if (socket.lastLocationUpdate && (now - socket.lastLocationUpdate < minInterval)) {
+          // Silently drop updates that are too frequent
+          return;
+        }
+
+        socket.lastLocationUpdate = now;
+
         // Verify user is in party
         const isMember = await PartyService.isUserInParty(data.partyId, userId);
 
@@ -225,38 +237,76 @@ export async function createRealtimeServer() {
           return;
         }
 
-        // Store location update in Redis
+        // Validate location data
+        if (
+          typeof data.location.latitude !== 'number' ||
+          typeof data.location.longitude !== 'number' ||
+          data.location.latitude < -90 ||
+          data.location.latitude > 90 ||
+          data.location.longitude < -180 ||
+          data.location.longitude > 180
+        ) {
+          socket.emit('error', {
+            code: 'INVALID_LOCATION',
+            message: 'Invalid location coordinates',
+          });
+          return;
+        }
+
+        // Store location update in Redis with TTL
         await PartyService.storeLocationUpdate({
           userId,
           partyId: data.partyId,
           latitude: data.location.latitude,
           longitude: data.location.longitude,
-          speed: data.location.speed,
-          heading: data.location.heading,
-          accuracy: data.location.accuracy,
+          speed: data.location.speed || 0,
+          heading: data.location.heading || 0,
+          accuracy: data.location.accuracy || 0,
           timestamp: new Date(),
         });
 
-        // Get user info for broadcast
-        const userResult = await db.query(
-          'SELECT display_name FROM users WHERE id = $1',
-          [userId]
-        );
+        // Get user info for broadcast (cache in Redis for performance)
+        const cacheKey = `user:${userId}:display_name`;
+        let displayName = await redis.get(cacheKey);
+
+        if (!displayName) {
+          const userResult = await db.query(
+            'SELECT display_name FROM users WHERE id = $1',
+            [userId]
+          );
+          displayName = userResult.rows[0]?.display_name || 'Unknown';
+          
+          // Cache for 5 minutes
+          if (displayName) {
+            await redis.set(cacheKey, displayName, 300);
+          }
+        }
 
         const broadcast: LocationBroadcast = {
           userId,
-          displayName: userResult.rows[0]?.display_name || 'Unknown',
+          displayName: displayName || 'Unknown',
           latitude: data.location.latitude,
           longitude: data.location.longitude,
-          speed: data.location.speed,
-          heading: data.location.heading,
-          accuracy: data.location.accuracy,
+          speed: data.location.speed || 0,
+          heading: data.location.heading || 0,
+          accuracy: data.location.accuracy || 0,
           timestamp: new Date().toISOString(),
         };
 
         // Broadcast to all party members (including sender for confirmation)
         io.to(`party:${data.partyId}`).emit('party:location-update', broadcast);
+
+        logger.debug({
+          type: 'location_update',
+          partyId: data.partyId,
+          userId,
+          latency: Date.now() - now,
+        });
       } catch (error) {
+        logger.error({
+          type: 'location_update_error',
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
         socket.emit('error', {
           code: 'LOCATION_UPDATE_ERROR',
           message: error instanceof Error ? error.message : 'Failed to update location',
