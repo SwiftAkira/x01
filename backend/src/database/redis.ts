@@ -1,5 +1,5 @@
 import { createClient } from 'redis';
-import { redisConfig } from '../config.js';
+import { config, redisConfig } from '../config.js';
 import { logger } from '../utils/logger.js';
 
 export type RedisClient = ReturnType<typeof createClient>;
@@ -36,15 +36,21 @@ export class RedisConnection {
     }
 
     try {
-      // Create main client
-      this.client = createClient({
-        socket: {
-          host: redisConfig.host,
-          port: redisConfig.port,
-        },
-        password: redisConfig.password,
-        database: redisConfig.db,
-      });
+      // Create main client (use REDIS_URL for Upstash, fallback to manual config)
+      if (config.REDIS_URL) {
+        this.client = createClient({
+          url: config.REDIS_URL,
+        });
+      } else {
+        this.client = createClient({
+          socket: {
+            host: redisConfig.host,
+            port: redisConfig.port,
+          },
+          password: redisConfig.password,
+          database: redisConfig.db,
+        });
+      }
 
       // Create subscriber client (separate connection for pub/sub)
       this.subscriber = this.client.duplicate();

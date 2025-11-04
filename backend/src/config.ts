@@ -18,8 +18,9 @@ const envSchema = z.object({
   // CORS Configuration
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
 
-  // Database Configuration
+  // Database Configuration (supports both Neon and manual config)
   DATABASE_URL: z.string().url().optional(),
+  POSTGRES_URL: z.string().url().optional(), // Neon/Vercel Postgres
   DB_HOST: z.string().default('localhost'),
   DB_PORT: z.string().transform(Number).pipe(z.number().int().positive()).default('5432'),
   DB_NAME: z.string().default('speedlink_db'),
@@ -29,7 +30,8 @@ const envSchema = z.object({
   DB_IDLE_TIMEOUT: z.string().transform(Number).pipe(z.number().int().positive()).default('30000'),
   DB_CONNECTION_TIMEOUT: z.string().transform(Number).pipe(z.number().int().positive()).default('5000'),
 
-  // Redis Configuration
+  // Redis Configuration (supports both Upstash and manual config)
+  REDIS_URL: z.string().url().optional(), // Upstash Redis
   REDIS_HOST: z.string().default('localhost'),
   REDIS_PORT: z.string().transform(Number).pipe(z.number().int().positive()).default('6379'),
   REDIS_PASSWORD: z.string().optional().default(''),
@@ -90,9 +92,9 @@ export const isDevelopment = config.NODE_ENV === 'development';
 export const isProduction = config.NODE_ENV === 'production';
 export const isTest = config.NODE_ENV === 'test';
 
-// Database connection string
+// Database connection string (prioritize POSTGRES_URL for Neon)
 export const getDatabaseUrl = () => {
-  return config.DATABASE_URL || 
+  return config.POSTGRES_URL || config.DATABASE_URL || 
     `postgresql://${config.DB_USER}:${config.DB_PASSWORD}@${config.DB_HOST}:${config.DB_PORT}/${config.DB_NAME}`;
 };
 

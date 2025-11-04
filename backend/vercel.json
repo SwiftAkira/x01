@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "src/rest-api/vercel.ts",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "src/rest-api/vercel.ts"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}
