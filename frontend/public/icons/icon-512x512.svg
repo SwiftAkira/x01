@@ -1,0 +1,6 @@
+<!-- Placeholder SVG icon - replace with actual SpeedLink logo -->
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" fill="#0C0C0C"/>
+  <circle cx="256" cy="256" r="160" fill="#84CC16"/>
+  <path d="M256 149 L256 256 L336 256" stroke="#0C0C0C" stroke-width="20" stroke-linecap="round" fill="none"/>
+</svg>
