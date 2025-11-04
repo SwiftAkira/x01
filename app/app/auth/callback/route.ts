@@ -2,26 +2,34 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
-  const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/dashboard'
+  const requestUrl = new URL(request.url)
+  const code = requestUrl.searchParams.get('code')
+  const next = requestUrl.searchParams.get('next') ?? '/dashboard'
 
   if (code) {
     const supabase = await createClient()
     const { error } = await supabase.auth.exchangeCodeForSession(code)
+    
     if (!error) {
+      // Get the actual host from headers (works for Vercel deployments)
       const forwardedHost = request.headers.get('x-forwarded-host')
-      const isLocalEnv = process.env.NODE_ENV === 'development'
-      if (isLocalEnv) {
-        return NextResponse.redirect(`${origin}${next}`)
-      } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`)
+      const forwardedProto = request.headers.get('x-forwarded-proto')
+      
+      // Construct the redirect URL
+      let redirectUrl: string
+      
+      if (forwardedHost && forwardedProto) {
+        // Production: Use forwarded headers from Vercel
+        redirectUrl = `${forwardedProto}://${forwardedHost}${next}`
       } else {
-        return NextResponse.redirect(`${origin}${next}`)
+        // Fallback to request origin
+        redirectUrl = `${requestUrl.origin}${next}`
       }
+      
+      return NextResponse.redirect(redirectUrl)
     }
   }
 
   // return the user to an error page with instructions
-  return NextResponse.redirect(`${origin}/auth/auth-code-error`)
+  return NextResponse.redirect(`${requestUrl.origin}/auth/auth-code-error`)
 }
