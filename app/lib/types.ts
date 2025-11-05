@@ -84,6 +84,7 @@ export interface NavigationStep {
   maneuverType?: string | null;
   maneuverModifier?: string | null;
   maneuverLocation: [number, number];
+  geometry?: [number, number][];
   lanes?: LaneInfo[];
 }
 

@@ -234,6 +234,7 @@ export const getDrivingRoute = async (
         maneuverType: step.maneuver.type ?? null,
         maneuverModifier: step.maneuver.modifier ?? null,
         maneuverLocation: step.maneuver.location,
+  geometry: step.geometry.coordinates,
         lanes: lanes && lanes.length > 0 ? lanes : undefined,
       })
     })

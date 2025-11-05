@@ -10,8 +10,7 @@ import Map, {
 } from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import type { FeatureCollection, LineString } from 'geojson'
-import type { NavigationStep } from '@/lib/types'
-import LaneOverlay from './LaneOverlay'
+import type { LaneInfo, NavigationStep } from '@/lib/types'
 
 export interface MarkerData {
   id: string
@@ -114,7 +113,7 @@ export default function MapView({
         // Navigation mode: 3D tilted view following heading with lane-level zoom
         mapRef.current.flyTo({
           center: [center[0], center[1]],
-          zoom: 18.5, // Lane-level zoom (18-20 is ideal for seeing lanes)
+          zoom: 22, // Ultra-close zoom to deliver native-feeling lane guidance
           pitch: 60, // Tilt the map to 3D perspective
           bearing: userHeading ?? 0, // Rotate map to face direction of travel
           duration: 500,
@@ -169,6 +168,7 @@ export default function MapView({
         style={{ width: '100%', height: '100%' }}
         attributionControl={false}
         cursor="grab"
+        maxZoom={22}
       >
         {/* Geolocate Control */}
         <GeolocateControl
@@ -286,6 +286,7 @@ export default function MapView({
             lanes={activeStep.lanes}
             position={center}
             heading={userHeading}
+            geometry={activeStep.geometry}
           />
         )}
       </Map>
@@ -304,5 +305,225 @@ export default function MapView({
         </div>
       )}
     </div>
+  )
+}
+
+interface LaneOverlayProps {
+  lanes: LaneInfo[]
+  position: [number, number]
+  heading: number
+  geometry?: [number, number][]
+}
+
+type LaneFeatureCollection = FeatureCollection<LineString, {
+  index: number
+  valid: boolean
+  active: boolean
+}>
+
+const DEG2RAD = Math.PI / 180
+const LANE_WIDTH_METERS = 3.5
+const BACKWARD_LENGTH_METERS = 15
+const FORWARD_LENGTH_METERS = 45
+
+const projectToLocalMeters = (
+  coordinate: [number, number],
+  reference: [number, number]
+): [number, number] => {
+  const [lon, lat] = coordinate
+  const [refLon, refLat] = reference
+  const refLatRad = refLat * DEG2RAD
+
+  const metersPerDegLat = 111132.92 - 559.82 * Math.cos(2 * refLatRad) + 1.175 * Math.cos(4 * refLatRad) - 0.0023 * Math.cos(6 * refLatRad)
+  const metersPerDegLon = 111412.84 * Math.cos(refLatRad) - 93.5 * Math.cos(3 * refLatRad) + 0.118 * Math.cos(5 * refLatRad)
+
+  return [
+    (lon - refLon) * metersPerDegLon,
+    (lat - refLat) * metersPerDegLat,
+  ]
+}
+
+const unprojectToLonLat = (
+  point: [number, number],
+  reference: [number, number]
+): [number, number] => {
+  const [x, y] = point
+  const [refLon, refLat] = reference
+  const refLatRad = refLat * DEG2RAD
+
+  const metersPerDegLat = 111132.92 - 559.82 * Math.cos(2 * refLatRad) + 1.175 * Math.cos(4 * refLatRad) - 0.0023 * Math.cos(6 * refLatRad)
+  const metersPerDegLon = 111412.84 * Math.cos(refLatRad) - 93.5 * Math.cos(3 * refLatRad) + 0.118 * Math.cos(5 * refLatRad)
+
+  return [
+    refLon + x / metersPerDegLon,
+    refLat + y / metersPerDegLat,
+  ]
+}
+
+const normalize = (vector: [number, number]): [number, number] => {
+  const [x, y] = vector
+  const length = Math.hypot(x, y)
+  if (length === 0) {
+    return [0, 0]
+  }
+  return [x / length, y / length]
+}
+
+const getFallbackDirection = (heading: number): [number, number] => {
+  const headingRad = (heading % 360) * DEG2RAD
+  const x = Math.sin(headingRad)
+  const y = Math.cos(headingRad)
+  return normalize([x, y])
+}
+
+function LaneOverlay({ lanes, position, heading, geometry }: LaneOverlayProps) {
+  const laneFeatures = useMemo<LaneFeatureCollection | null>(() => {
+    if (!lanes || lanes.length === 0) {
+      return null
+    }
+
+    const reference = position
+    const anchorMeters = projectToLocalMeters(position, reference)
+
+    let bestPoint = anchorMeters
+    let direction: [number, number] | null = null
+
+    if (geometry && geometry.length >= 2) {
+      let minDistance = Number.POSITIVE_INFINITY
+
+      for (let i = 0; i < geometry.length - 1; i++) {
+        const start = projectToLocalMeters(geometry[i], reference)
+        const end = projectToLocalMeters(geometry[i + 1], reference)
+        const segment = [end[0] - start[0], end[1] - start[1]] as [number, number]
+        const segmentLengthSquared = segment[0] * segment[0] + segment[1] * segment[1]
+
+        if (segmentLengthSquared === 0) {
+          continue
+        }
+
+        const toAnchor = [anchorMeters[0] - start[0], anchorMeters[1] - start[1]] as [number, number]
+        let t = (toAnchor[0] * segment[0] + toAnchor[1] * segment[1]) / segmentLengthSquared
+        t = Math.max(0, Math.min(1, t))
+
+        const projection: [number, number] = [
+          start[0] + segment[0] * t,
+          start[1] + segment[1] * t,
+        ]
+
+        const distanceToSegment = Math.hypot(
+          projection[0] - anchorMeters[0],
+          projection[1] - anchorMeters[1]
+        )
+
+        if (distanceToSegment < minDistance) {
+          minDistance = distanceToSegment
+          bestPoint = projection
+          direction = normalize(segment)
+        }
+      }
+    }
+
+    if (!direction || (direction[0] === 0 && direction[1] === 0)) {
+      direction = getFallbackDirection(heading)
+    }
+
+    const normal: [number, number] = [-direction[1], direction[0]]
+    const features: LaneFeatureCollection = {
+      type: 'FeatureCollection',
+      features: [],
+    }
+
+    const laneCount = lanes.length
+    const laneCenterOffset = (laneCount - 1) / 2
+
+    lanes.forEach((lane, index) => {
+      const offset = (index - laneCenterOffset) * LANE_WIDTH_METERS
+      const offsetVector: [number, number] = [
+        normal[0] * offset,
+        normal[1] * offset,
+      ]
+
+      const startPoint: [number, number] = [
+        bestPoint[0] - direction[0] * BACKWARD_LENGTH_METERS + offsetVector[0],
+        bestPoint[1] - direction[1] * BACKWARD_LENGTH_METERS + offsetVector[1],
+      ]
+
+      const endPoint: [number, number] = [
+        bestPoint[0] + direction[0] * FORWARD_LENGTH_METERS + offsetVector[0],
+        bestPoint[1] + direction[1] * FORWARD_LENGTH_METERS + offsetVector[1],
+      ]
+
+      features.features.push({
+        type: 'Feature',
+        properties: {
+          index,
+          valid: lane.valid,
+          active: lane.valid && lane.active,
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            unprojectToLonLat(startPoint, reference),
+            unprojectToLonLat(endPoint, reference),
+          ],
+        },
+      })
+    })
+
+    return features
+  }, [lanes, position, geometry, heading])
+
+  if (!laneFeatures || laneFeatures.features.length === 0) {
+    return null
+  }
+
+  return (
+    <Source id="lane-overlay" type="geojson" data={laneFeatures}>
+      <Layer
+        id="lane-overlay-base"
+        type="line"
+        paint={{
+          'line-color': [
+            'case',
+            ['boolean', ['get', 'active'], false], '#84CC16',
+            ['boolean', ['get', 'valid'], false], '#38BDF8',
+            '#262626',
+          ],
+          'line-width': [
+            'case',
+            ['boolean', ['get', 'active'], false], 18,
+            ['boolean', ['get', 'valid'], false], 12,
+            8,
+          ],
+          'line-opacity': [
+            'case',
+            ['boolean', ['get', 'valid'], false], 0.85,
+            0.4,
+          ],
+        }}
+        layout={{
+          'line-cap': 'round',
+          'line-join': 'round',
+        }}
+      />
+      <Layer
+        id="lane-overlay-outline"
+        type="line"
+        paint={{
+          'line-color': '#0C0C0C',
+          'line-width': [
+            'case',
+            ['boolean', ['get', 'active'], false], 4,
+            ['boolean', ['get', 'valid'], false], 3,
+            2,
+          ],
+          'line-opacity': 0.7,
+        }}
+        layout={{
+          'line-cap': 'round',
+          'line-join': 'round',
+        }}
+      />
+    </Source>
   )
 }
