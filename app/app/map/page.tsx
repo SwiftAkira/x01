@@ -4,13 +4,18 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { getLocationService, type LocationCoordinates } from '@/lib/services/locationService'
+import { getVoiceNavigationService } from '@/lib/services/voiceNavigationService'
+import { reportHazard } from '@/lib/services/hazardService'
 import MapView, { type MarkerData } from './MapView'
+import WazeBottomSheet from './WazeBottomSheet'
 import type {
   PartyMember,
   Profile,
   LocationUpdate,
   PartyNavigationState,
   NavigationStep,
+  HazardType,
+  RouteOptions,
 } from '@/lib/types'
 import {
   searchPlaces,
@@ -68,6 +73,7 @@ export default function MapPage() {
   const router = useRouter()
   const supabase = createClient()
   const locationService = getLocationService()
+  const voiceService = getVoiceNavigationService()
 
   // State management
   const [loading, setLoading] = useState(true)
@@ -88,6 +94,7 @@ export default function MapPage() {
   const [activeStep, setActiveStep] = useState<NavigationStep | null>(null)
   const [remainingDistance, setRemainingDistance] = useState<number | null>(null)
   const [remainingDuration, setRemainingDuration] = useState<number | null>(null)
+  const [currentSpeed, setCurrentSpeed] = useState<number>(0)
 
   // Computed values for permissions and modes
   // Solo mode: user can set their own destination
@@ -190,6 +197,11 @@ export default function MapPage() {
   useEffect(() => {
     const handleLocationUpdate = async (position: LocationCoordinates) => {
       setCurrentLocation([position.longitude, position.latitude])
+      
+      // Update current speed (convert m/s to km/h)
+      if (position.speed !== null && position.speed !== undefined) {
+        setCurrentSpeed(position.speed * 3.6)
+      }
 
       // Save to database only if in a party
       if (userPartyId) {
@@ -460,6 +472,8 @@ export default function MapPage() {
         setNavigationError(null)
         setNavigationLoading(true)
 
+        console.log('Calculating route from', currentLocation, 'to', suggestion.coordinates)
+
         // Get route from Mapbox Directions API
         const payload = await getDrivingRoute({
           origin: currentLocation,
@@ -467,6 +481,8 @@ export default function MapPage() {
           destinationName: suggestion.name,
           destinationAddress: suggestion.address,
         })
+
+        console.log('Route calculated successfully:', payload)
 
         let nextState: PartyNavigationState
 
@@ -812,30 +828,32 @@ export default function MapPage() {
             )}
           </section>
 
-          {/* Map Component */}
-          <MapView
-            markers={markers}
-            center={currentLocation}
-            zoom={14}
-            className="h-[calc(100vh-220px)]"
-            route={navigationState?.route_geojson}
-            destination={
-              navigationState
-                ? {
-                    name: navigationState.destination_name,
-                    coordinates: navigationState.destination_coordinates,
-                  }
-                : null
-            }
-            onSelectDestination={canSelectDestination ? handleMapDestinationSelect : undefined}
-            activeStep={activeStep}
-          />
+          {/* Map Component - Full screen */}
+          <div className="fixed inset-0 z-0">
+            <MapView
+              markers={markers}
+              center={currentLocation}
+              zoom={14}
+              className="h-full w-full"
+              route={navigationState?.route_geojson}
+              destination={
+                navigationState
+                  ? {
+                      name: navigationState.destination_name,
+                      coordinates: navigationState.destination_coordinates,
+                    }
+                  : null
+              }
+              onSelectDestination={canSelectDestination ? handleMapDestinationSelect : undefined}
+              activeStep={activeStep}
+            />
+          </div>
         </div>
       </main>
 
       {/* Party Members Overlay (only shown in party mode) */}
       {userPartyId && partyMembers.length > 0 && (
-        <div className="absolute top-40 left-4 bg-[#0C0C0C]/90 border border-[#262626] rounded-lg p-4 backdrop-blur-sm max-w-xs">
+        <div className="fixed top-40 left-4 bg-[#0C0C0C]/90 border border-[#262626] rounded-lg p-4 backdrop-blur-sm max-w-xs z-50">
           <h3 className="text-[#84CC16] font-bold mb-2">Party Members ({partyMembers.length})</h3>
           <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
             {partyMembers.map((member) => (
@@ -856,6 +874,57 @@ export default function MapPage() {
           </div>
         </div>
       )}
+
+      {/* Waze-Style Bottom Sheet */}
+      <WazeBottomSheet
+        isNavigating={navigationActive}
+        currentStep={activeStep}
+        remainingDistance={remainingDistance}
+        remainingDuration={remainingDuration}
+        currentSpeed={currentSpeed}
+        onStopNavigation={async () => {
+          if (userPartyId && isPartyLeader) {
+            await clearNavigationState(supabase, userPartyId)
+          }
+          setNavigationState(null)
+          setActiveStep(null)
+          voiceService.stop()
+        }}
+        onReportHazard={async (hazardType: HazardType) => {
+          if (!userPartyId || !currentLocation) return
+          
+          await reportHazard({
+            party_id: userPartyId,
+            hazard_type: hazardType,
+            latitude: currentLocation[1],
+            longitude: currentLocation[0],
+          })
+        }}
+        onChangeRoute={async (_options: RouteOptions) => {
+          if (!navigationState || !currentLocation || !userId) return
+          
+          try {
+            // TODO: Use route options (fastest/shortest, avoid highways/tolls)
+            // This requires updating navigationService.ts to accept RouteOptions
+            const payload = await getDrivingRoute({
+              origin: currentLocation,
+              destination: navigationState.destination_coordinates,
+              destinationName: navigationState.destination_name,
+              destinationAddress: navigationState.destination_address || undefined,
+            })
+
+            let nextState: PartyNavigationState
+            if (userPartyId && isPartyLeader) {
+              nextState = await saveNavigationState(supabase, userPartyId, userId, payload)
+            } else {
+              nextState = buildLocalNavigationState(userId, payload)
+            }
+            setNavigationState(nextState)
+          } catch (err) {
+            console.error('Failed to recalculate route:', err)
+          }
+        }}
+      />
     </div>
   )
 }
