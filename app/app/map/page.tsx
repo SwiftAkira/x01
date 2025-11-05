@@ -655,7 +655,7 @@ export default function MapPage() {
       // Interpolation state for smooth movement
       let currentIndex = 0
       let interpolationProgress = 0
-      const POINTS_PER_SECOND = 20 // How many coordinate points to traverse per second (realistic speed)
+      const POINTS_PER_SECOND = 1.5 // How many coordinate points to traverse per second (realistic driving speed)
       
       const interval = setInterval(() => {
         if (currentIndex >= coordinates.length - 1) {
@@ -692,13 +692,13 @@ export default function MapPage() {
         setCurrentSpeed(speed)
         
         // Increment interpolation progress
-        interpolationProgress += 0.001 * POINTS_PER_SECOND // Progress increment per millisecond
+        interpolationProgress += 0.03 * POINTS_PER_SECOND // Progress increment per 30ms
         
         if (interpolationProgress >= 1.0) {
           interpolationProgress = 0
           currentIndex++
         }
-      }, 1) // Update every 1ms for ultra-smooth GPS simulation
+      }, 30) // Update every 30ms for smooth GPS simulation
       
     } catch (err) {
       console.error('Simulation error:', err)

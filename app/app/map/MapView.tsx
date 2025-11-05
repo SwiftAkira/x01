@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Map, {
   Marker,
   GeolocateControl,
@@ -284,11 +284,11 @@ export default function MapView({
         )}
 
         {/* Lane Overlay - Amap style lanes on road */}
-        {isNavigating && activeStep?.lanes && center && (
+        {isNavigating && activeStep?.lanes && center && route && (
           <LaneOverlay
             lanes={activeStep.lanes}
             position={center}
-            geometry={activeStep.geometry}
+            geometry={route.features[0]?.geometry.coordinates as [number, number][]}
           />
         )}
       </Map>
@@ -325,8 +325,6 @@ type LaneFeatureCollection = FeatureCollection<LineString, {
 
 const DEG2RAD = Math.PI / 180
   const LANE_WIDTH_METERS = 0.5 // Visual spacing between lane centers for map display
-  const BACKWARD_LENGTH_METERS = 100 // Distance behind user to show lanes
-  const FORWARD_LENGTH_METERS = 150 // Distance ahead of user to show lanes
 
 const projectToLocalMeters = (
   coordinate: [number, number],
@@ -372,47 +370,22 @@ const normalize = (vector: [number, number]): [number, number] => {
 }
 
 function LaneOverlay({ lanes, position, geometry }: LaneOverlayProps) {
+  const [pulsePhase, setPulsePhase] = useState(0)
+  
+  // Animate pulse effect
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPulsePhase((prev: number) => (prev + 0.08) % 1)
+    }, 16) // 60 FPS animation
+    return () => clearInterval(interval)
+  }, [])
+
   const laneFeatures = useMemo<LaneFeatureCollection | null>(() => {
     if (!lanes || lanes.length === 0 || !geometry || geometry.length < 2) {
       return null
     }
 
     const reference = position
-    const anchorMeters = projectToLocalMeters(position, reference)
-
-    // Find the closest segment and our position along the route
-    let minDistance = Number.POSITIVE_INFINITY
-    let closestSegmentIndex = 0
-    let closestT = 0
-
-    for (let i = 0; i < geometry.length - 1; i++) {
-      const start = projectToLocalMeters(geometry[i], reference)
-      const end = projectToLocalMeters(geometry[i + 1], reference)
-      const segment = [end[0] - start[0], end[1] - start[1]] as [number, number]
-      const segmentLengthSquared = segment[0] * segment[0] + segment[1] * segment[1]
-
-      if (segmentLengthSquared === 0) continue
-
-      const toAnchor = [anchorMeters[0] - start[0], anchorMeters[1] - start[1]] as [number, number]
-      let t = (toAnchor[0] * segment[0] + toAnchor[1] * segment[1]) / segmentLengthSquared
-      t = Math.max(0, Math.min(1, t))
-
-      const projection: [number, number] = [
-        start[0] + segment[0] * t,
-        start[1] + segment[1] * t,
-      ]
-
-      const distanceToSegment = Math.hypot(
-        projection[0] - anchorMeters[0],
-        projection[1] - anchorMeters[1]
-      )
-
-      if (distanceToSegment < minDistance) {
-        minDistance = distanceToSegment
-        closestSegmentIndex = i
-        closestT = t
-      }
-    }
 
     // Build lane segments that follow the actual road geometry
     const features: LaneFeatureCollection = {
@@ -423,84 +396,28 @@ function LaneOverlay({ lanes, position, geometry }: LaneOverlayProps) {
     const laneCount = lanes.length
     const laneCenterOffset = (laneCount - 1) / 2
 
-    // Helper function to generate coordinates for a given offset
+    // Helper function to generate coordinates for a given offset along entire route
     const generatePathCoordinates = (offset: number): [number, number][] => {
       const pathCoordinates: [number, number][] = []
       
-      // First, go backwards from current position
-      const backwardCoords: [number, number][] = []
-      let backwardDistance = 0
-      let backwardSegment = closestSegmentIndex
-      let backwardT = closestT
-
-      while (backwardDistance < BACKWARD_LENGTH_METERS && backwardSegment >= 0) {
-        const start = projectToLocalMeters(geometry[backwardSegment], reference)
-        const end = projectToLocalMeters(geometry[backwardSegment + 1], reference)
+      // Sample the entire route geometry
+      for (let i = 0; i < geometry.length - 1; i++) {
+        const start = projectToLocalMeters(geometry[i], reference)
+        const end = projectToLocalMeters(geometry[i + 1], reference)
         const segment = [end[0] - start[0], end[1] - start[1]] as [number, number]
         const segmentLength = Math.hypot(segment[0], segment[1])
 
-        if (segmentLength === 0) {
-          backwardSegment--
-          backwardT = 1
-          continue
-        }
+        if (segmentLength === 0) continue
 
         const direction = normalize(segment)
         const normal: [number, number] = [direction[1], -direction[0]]
 
-        const startT = backwardSegment === closestSegmentIndex ? backwardT : 1
-        const availableSegment = segmentLength * startT
+        // Sample this segment every 10 meters for performance
+        const sampleStep = 10
+        const samples = Math.max(2, Math.ceil(segmentLength / sampleStep))
 
-        const sampleStep = 5
-        const samples = Math.max(2, Math.ceil(availableSegment / sampleStep))
-
-        for (let s = samples - 1; s >= 0 && backwardDistance < BACKWARD_LENGTH_METERS; s--) {
-          const t = startT * (s / (samples - 1))
-          const point: [number, number] = [
-            start[0] + segment[0] * t,
-            start[1] + segment[1] * t,
-          ]
-          const offsetPoint: [number, number] = [
-            point[0] + normal[0] * offset,
-            point[1] + normal[1] * offset,
-          ]
-          backwardCoords.unshift(unprojectToLonLat(offsetPoint, reference))
-          backwardDistance += sampleStep
-        }
-
-        backwardSegment--
-        backwardT = 1
-      }
-
-      pathCoordinates.push(...backwardCoords)
-
-      // Now go forward from current position
-      let accumulatedDistance = 0
-      let currentSegment = closestSegmentIndex
-      let currentT = closestT
-
-      while (accumulatedDistance < FORWARD_LENGTH_METERS && currentSegment < geometry.length - 1) {
-        const start = projectToLocalMeters(geometry[currentSegment], reference)
-        const end = projectToLocalMeters(geometry[currentSegment + 1], reference)
-        const segment = [end[0] - start[0], end[1] - start[1]] as [number, number]
-        const segmentLength = Math.hypot(segment[0], segment[1])
-
-        if (segmentLength === 0) {
-          currentSegment++
-          continue
-        }
-
-        const direction = normalize(segment)
-        const normal: [number, number] = [direction[1], -direction[0]]
-
-        const startT = currentSegment === closestSegmentIndex ? currentT : 0
-        const remainingSegment = segmentLength * (1 - startT)
-
-        const sampleStep = 5
-        const samples = Math.max(2, Math.ceil(remainingSegment / sampleStep))
-
-        for (let s = 0; s < samples && accumulatedDistance < FORWARD_LENGTH_METERS; s++) {
-          const t = startT + (1 - startT) * (s / (samples - 1))
+        for (let s = 0; s < samples; s++) {
+          const t = s / (samples - 1)
           const point: [number, number] = [
             start[0] + segment[0] * t,
             start[1] + segment[1] * t,
@@ -512,11 +429,7 @@ function LaneOverlay({ lanes, position, geometry }: LaneOverlayProps) {
           ]
 
           pathCoordinates.push(unprojectToLonLat(offsetPoint, reference))
-          accumulatedDistance += sampleStep
         }
-
-        currentSegment++
-        currentT = 0
       }
 
       return pathCoordinates
@@ -578,7 +491,7 @@ function LaneOverlay({ lanes, position, geometry }: LaneOverlayProps) {
   }
 
   return (
-    <Source id="lane-overlay" type="geojson" data={laneFeatures}>
+    <Source id="lane-overlay" type="geojson" data={laneFeatures} lineMetrics={true}>
       {/* Road surface base - asphalt */}
       <Layer
         id="lane-overlay-road-surface"
@@ -608,14 +521,29 @@ function LaneOverlay({ lanes, position, geometry }: LaneOverlayProps) {
           'line-join': 'miter',
         }}
       />
-      {/* Active lane highlight - solid lime green */}
+      {/* Active lane - solid bright green */}
       <Layer
-        id="lane-overlay-active"
+        id="lane-overlay-active-base"
         type="line"
         paint={{
           'line-color': '#84CC16',
-          'line-width': 28, // 30% smaller than 40
+          'line-width': 28,
           'line-opacity': ['case', ['boolean', ['get', 'active'], false], 0.9, 0],
+        }}
+        layout={{
+          'line-cap': 'round',
+          'line-join': 'round',
+        }}
+      />
+      {/* Active lane glow - pulsing effect */}
+      <Layer
+        id="lane-overlay-active-glow"
+        type="line"
+        paint={{
+          'line-color': '#A3E635',
+          'line-width': 32,
+          'line-opacity': ['case', ['boolean', ['get', 'active'], false], 0.25 + pulsePhase * 0.15, 0],
+          'line-blur': 6,
         }}
         layout={{
           'line-cap': 'round',
