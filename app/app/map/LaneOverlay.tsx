@@ -15,120 +15,214 @@ export default function LaneOverlay({ lanes, position, heading }: LaneOverlayPro
   }
 
   const [lng, lat] = position
-  const laneWidth = 0.00003 // degrees (about 3 meters)
-  const laneLength = 0.0008 // degrees (about 80 meters ahead)
   
-  // Calculate offset perpendicular to heading
+  // Amap-style configuration - lanes appear 100-200m ahead
+  const laneStartDistance = 0.0005 // ~50 meters ahead
+  const laneLength = 0.002 // ~200 meters long
+  const laneWidth = 0.000035 // ~3.5 meters per lane
+  const laneGap = 0.000005 // ~0.5 meter gap between lanes
+  
+  // Convert heading to radians
   const headingRad = (heading * Math.PI) / 180
   const perpRad = headingRad + Math.PI / 2
 
-  // Center offset
-  const totalWidth = lanes.length * laneWidth
+  // Calculate total road width
+  const totalWidth = lanes.length * (laneWidth + laneGap) - laneGap
   const startOffset = -totalWidth / 2
 
-  const laneFeatures = lanes.map((lane, index) => {
-    const laneOffset = startOffset + (index + 0.5) * laneWidth
+  // Create lane polygons (like Amap 3D road rendering)
+  const lanePolygons = lanes.map((lane, index) => {
+    const laneOffset = startOffset + index * (laneWidth + laneGap)
     
-    // Calculate lane center position
-    const centerLng = lng + laneOffset * Math.cos(perpRad)
-    const centerLat = lat + laneOffset * Math.sin(perpRad)
+    // Start position (ahead of vehicle)
+    const startLng = lng + laneStartDistance * Math.sin(headingRad)
+    const startLat = lat + laneStartDistance * Math.cos(headingRad)
     
-    // Calculate start and end points along heading direction
-    const startLng = centerLng
-    const startLat = centerLat
-    const endLng = centerLng + laneLength * Math.sin(headingRad)
-    const endLat = centerLat + laneLength * Math.cos(headingRad)
+    // End position (further ahead)
+    const endLng = startLng + laneLength * Math.sin(headingRad)
+    const endLat = startLat + laneLength * Math.cos(headingRad)
     
-    // Create lane stripe
+    // Calculate lane boundaries (left and right edges)
+    const leftOffset = laneOffset
+    const rightOffset = laneOffset + laneWidth
+    
+    // Four corners of the lane rectangle
+    const startLeft = [
+      startLng + leftOffset * Math.cos(perpRad),
+      startLat + leftOffset * Math.sin(perpRad)
+    ]
+    const startRight = [
+      startLng + rightOffset * Math.cos(perpRad),
+      startLat + rightOffset * Math.sin(perpRad)
+    ]
+    const endRight = [
+      endLng + rightOffset * Math.cos(perpRad),
+      endLat + rightOffset * Math.sin(perpRad)
+    ]
+    const endLeft = [
+      endLng + leftOffset * Math.cos(perpRad),
+      endLat + leftOffset * Math.sin(perpRad)
+    ]
+    
     return {
       type: 'Feature' as const,
       properties: {
         valid: lane.valid,
         active: lane.active,
+        laneIndex: index,
         indications: lane.indications.join(','),
       },
       geometry: {
-        type: 'LineString' as const,
-        coordinates: [[startLng, startLat], [endLng, endLat]],
+        type: 'Polygon' as const,
+        coordinates: [[startLeft, startRight, endRight, endLeft, startLeft]],
       },
     }
   })
 
-  const geojson = {
+  // Create lane divider lines (white dashed lines between lanes)
+  const dividerLines = lanes.slice(0, -1).map((_, index) => {
+    const laneOffset = startOffset + (index + 1) * (laneWidth + laneGap) - laneGap / 2
+    
+    const startLng = lng + laneStartDistance * Math.sin(headingRad)
+    const startLat = lat + laneStartDistance * Math.cos(headingRad)
+    const endLng = startLng + laneLength * Math.sin(headingRad)
+    const endLat = startLat + laneLength * Math.cos(headingRad)
+    
+    const startPoint = [
+      startLng + laneOffset * Math.cos(perpRad),
+      startLat + laneOffset * Math.sin(perpRad)
+    ]
+    const endPoint = [
+      endLng + laneOffset * Math.cos(perpRad),
+      endLat + laneOffset * Math.sin(perpRad)
+    ]
+    
+    return {
+      type: 'Feature' as const,
+      properties: { divider: true },
+      geometry: {
+        type: 'LineString' as const,
+        coordinates: [startPoint, endPoint],
+      },
+    }
+  })
+
+  const laneGeojson = {
     type: 'FeatureCollection' as const,
-    features: laneFeatures,
+    features: lanePolygons,
+  }
+
+  const dividerGeojson = {
+    type: 'FeatureCollection' as const,
+    features: dividerLines,
   }
 
   return (
     <>
-      {/* Active/Valid lanes - bright */}
-      <Source id="active-lanes" type="geojson" data={geojson}>
+      {/* Lane surfaces with gradient (Amap 3D style) */}
+      <Source id="lane-surfaces" type="geojson" data={laneGeojson}>
         <Layer
-          id="active-lanes-layer"
+          id="lane-surfaces-layer"
+          type="fill"
+          paint={{
+            'fill-color': [
+              'case',
+              ['get', 'active'],
+              '#84CC16', // Active lane - bright green
+              ['get', 'valid'],
+              '#22C55E', // Valid lane - green
+              '#DC2626', // Invalid lane - red
+            ],
+            'fill-opacity': [
+              'case',
+              ['get', 'active'],
+              0.8, // Very prominent
+              ['get', 'valid'],
+              0.5, // Visible
+              0.3, // Dimmed
+            ],
+          }}
+        />
+      </Source>
+
+      {/* Lane borders (outline effect) */}
+      <Source id="lane-borders" type="geojson" data={laneGeojson}>
+        <Layer
+          id="lane-borders-layer"
           type="line"
           paint={{
             'line-color': [
               'case',
               ['get', 'active'],
-              '#84CC16', // Active lane - lime green
+              '#FAFAFA',
               ['get', 'valid'],
-              '#FAFAFA', // Valid lane - white
-              '#525252', // Invalid lane - gray
+              '#A3A3A3',
+              '#525252',
             ],
-            'line-width': 8,
-            'line-opacity': [
-              'case',
-              ['get', 'active'],
-              0.9,
-              ['get', 'valid'],
-              0.7,
-              0.3,
-            ],
+            'line-width': 2,
+            'line-opacity': 0.6,
           }}
         />
       </Source>
 
-      {/* Lane arrows */}
-      <Source id="lane-arrows" type="geojson" data={geojson}>
+      {/* Lane divider lines (dashed white lines) */}
+      <Source id="lane-dividers" type="geojson" data={dividerGeojson}>
         <Layer
-          id="lane-arrows-layer"
-          type="symbol"
-          layout={{
-            'symbol-placement': 'line',
-            'symbol-spacing': 50,
-            'icon-image': 'arrow', // Mapbox built-in arrow icon
-            'icon-size': [
-              'case',
-              ['get', 'active'],
-              1.2,
-              ['get', 'valid'],
-              1.0,
-              0.7,
-            ],
-            'icon-rotate': heading,
-            'icon-rotation-alignment': 'map',
-            'icon-allow-overlap': true,
-          }}
+          id="lane-dividers-layer"
+          type="line"
           paint={{
-            'icon-opacity': [
-              'case',
-              ['get', 'active'],
-              1.0,
-              ['get', 'valid'],
-              0.8,
-              0.4,
-            ],
-            'icon-color': [
-              'case',
-              ['get', 'active'],
-              '#84CC16',
-              ['get', 'valid'],
-              '#FAFAFA',
-              '#525252',
-            ],
+            'line-color': '#FAFAFA',
+            'line-width': 2,
+            'line-opacity': 0.8,
+            'line-dasharray': [2, 2], // Dashed line effect
           }}
         />
       </Source>
+
+      {/* Arrow indicators on lanes */}
+      {lanes.map((lane, index) => {
+        const laneOffset = startOffset + index * (laneWidth + laneGap) + laneWidth / 2
+        const arrowDistance = laneStartDistance + laneLength * 0.3
+        
+        const arrowLng = lng + arrowDistance * Math.sin(headingRad) + laneOffset * Math.cos(perpRad)
+        const arrowLat = lat + arrowDistance * Math.cos(headingRad) + laneOffset * Math.sin(perpRad)
+        
+        const arrowGeojson = {
+          type: 'FeatureCollection' as const,
+          features: [{
+            type: 'Feature' as const,
+            properties: {
+              indication: lane.indications[0] || 'straight',
+              active: lane.active,
+              valid: lane.valid,
+            },
+            geometry: {
+              type: 'Point' as const,
+              coordinates: [arrowLng, arrowLat],
+            },
+          }],
+        }
+        
+        return (
+          <Source key={`arrow-${index}`} id={`lane-arrow-${index}`} type="geojson" data={arrowGeojson}>
+            <Layer
+              id={`lane-arrow-layer-${index}`}
+              type="symbol"
+              layout={{
+                'text-field': '▲',
+                'text-size': lane.active ? 32 : lane.valid ? 24 : 18,
+                'text-rotate': heading,
+                'text-rotation-alignment': 'map',
+                'text-allow-overlap': true,
+              }}
+              paint={{
+                'text-color': lane.active ? '#0C0C0C' : '#FAFAFA',
+                'text-opacity': lane.active ? 1.0 : lane.valid ? 0.9 : 0.5,
+              }}
+            />
+          </Source>
+        )
+      })}
     </>
   )
 }
