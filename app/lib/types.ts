@@ -115,6 +115,49 @@ export interface UpdateLocationInput {
 }
 
 // =============================================
+// Hazard Reporting Types (Waze-style)
+// =============================================
+export type HazardType = 'police' | 'accident' | 'hazard' | 'traffic' | 'road_closed';
+export type HazardSeverity = 'low' | 'medium' | 'high';
+
+export interface HazardReport {
+  id: string;
+  party_id: string;
+  reported_by: string;
+  hazard_type: HazardType;
+  latitude: number;
+  longitude: number;
+  description?: string;
+  severity: HazardSeverity;
+  is_active: boolean;
+  upvotes: number;
+  downvotes: number;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ArrivalNotification {
+  id: string;
+  party_id: string;
+  user_id: string;
+  destination_latitude: number;
+  destination_longitude: number;
+  arrived_at: string;
+  notified: boolean;
+  created_at: string;
+}
+
+// =============================================
+// Route Options Types
+// =============================================
+export interface RouteOptions {
+  preference: 'fastest' | 'shortest';
+  avoid_highways: boolean;
+  avoid_tolls: boolean;
+}
+
+// =============================================
 // Response Types
 // =============================================
 export interface ApiResponse<T> {
