@@ -34,6 +34,7 @@ interface MapViewProps {
     coordinates: [number, number]
   } | null
   activeStep?: NavigationStep | null
+  fitBounds?: boolean
 }
 
 interface GeolocateEvent {
@@ -57,6 +58,7 @@ export default function MapView({
   route,
   destination,
   activeStep,
+  fitBounds = false,
 }: MapViewProps) {
   const mapRef = useRef<MapRef>(null)
   
@@ -69,14 +71,43 @@ export default function MapView({
     zoom: zoom,
   }), [center, zoom])
 
+  // Fit bounds to route when needed
   useEffect(() => {
-    if (center && mapRef.current) {
+    if (fitBounds && route && mapRef.current) {
+      const coordinates = route.features[0]?.geometry.coordinates as [number, number][]
+      if (coordinates && coordinates.length > 0) {
+        // Calculate bounds
+        let minLng = coordinates[0][0]
+        let maxLng = coordinates[0][0]
+        let minLat = coordinates[0][1]
+        let maxLat = coordinates[0][1]
+
+        coordinates.forEach(([lng, lat]) => {
+          minLng = Math.min(minLng, lng)
+          maxLng = Math.max(maxLng, lng)
+          minLat = Math.min(minLat, lat)
+          maxLat = Math.max(maxLat, lat)
+        })
+
+        mapRef.current.fitBounds(
+          [[minLng, minLat], [maxLng, maxLat]],
+          {
+            padding: 60,
+            duration: 1000,
+          }
+        )
+      }
+    }
+  }, [fitBounds, route])
+
+  useEffect(() => {
+    if (center && mapRef.current && !fitBounds) {
       mapRef.current.flyTo({
         center: [center[0], center[1]],
         duration: 1000
       })
     }
-  }, [center])
+  }, [center, fitBounds])
 
   const handleGeolocate = (e: GeolocateEvent) => {
     if (e.coords && onLocationUpdate) {

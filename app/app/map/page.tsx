@@ -810,6 +810,7 @@ export default function MapPage() {
                 longitude: currentLocation[0],
                 isCurrentUser: true,
               }] : []}
+              fitBounds={true}
             />
           </div>
 
