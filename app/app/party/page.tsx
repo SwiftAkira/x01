@@ -133,7 +133,7 @@ export default function PartyPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin h-12 w-12 border-4 border-[var(--primary)] border-t-transparent rounded-full" />
+        <div className="animate-spin h-12 w-12 border-4 border-primary border-t-transparent rounded-full" />
       </div>
     );
   }
@@ -143,10 +143,10 @@ export default function PartyPage() {
       <div className="max-w-2xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-[var(--foreground)]">Party</h1>
+          <h1 className="text-3xl font-bold text-foreground">Party</h1>
           <button
             onClick={() => router.push('/dashboard')}
-            className="px-4 py-2 rounded-lg font-semibold transition-all bg-[var(--card-bg)] border border-[var(--border)] text-[var(--foreground)] hover:border-[var(--foreground-secondary)]"
+            className="px-4 py-2 rounded-lg font-semibold transition-all bg-card border border-border text-foreground hover:border-muted"
           >
             Dashboard
           </button>
@@ -159,38 +159,38 @@ export default function PartyPage() {
             <div className="card">
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <h2 className="text-xl font-bold text-[var(--foreground)] mb-1">
+                  <h2 className="text-xl font-bold text-foreground mb-1">
                     {currentParty.name || 'Unnamed Party'}
                   </h2>
-                  <p className="text-sm text-[var(--foreground-secondary)]">
+                  <p className="text-sm text-muted">
                     {currentParty.member_count} members active
                   </p>
                 </div>
                 <button
                   onClick={() => setShowLeaveConfirm(true)}
-                  className="px-4 py-2 rounded-lg font-semibold transition-all bg-[var(--danger)]/10 border border-[var(--danger)]/20 text-[var(--danger)] hover:bg-[var(--danger)]/20"
+                  className="px-4 py-2 rounded-lg font-semibold transition-all bg-(--danger)/10 border border-(--danger)/20 text-danger hover:bg-(--danger)/20"
                 >
                   Leave
                 </button>
               </div>
 
               {/* Party Code */}
-              <div className="bg-[var(--background)] rounded-lg p-4 border border-[var(--border)]">
-                <p className="text-xs text-[var(--foreground-secondary)] mb-2">
+              <div className="bg-background rounded-lg p-4 border border-border">
+                <p className="text-xs text-muted mb-2">
                   Party Code
                 </p>
                 <div className="flex items-center justify-between">
-                  <span className="text-3xl font-bold text-[var(--primary)] tracking-widest">
+                  <span className="text-3xl font-bold text-primary tracking-widest">
                     {currentParty.party_code}
                   </span>
                   <button
                     onClick={copyPartyCode}
-                    className="px-4 py-2 rounded-lg font-semibold transition-all bg-[var(--primary)] text-black hover:bg-[var(--primary-hover)]"
+                    className="px-4 py-2 rounded-lg font-semibold transition-all bg-primary text-black hover:bg-(--primary-hover)"
                   >
                     {copySuccess ? '✓ Copied' : 'Copy'}
                   </button>
                 </div>
-                <p className="text-xs text-[var(--foreground-secondary)] mt-2">
+                <p className="text-xs text-muted mt-2">
                   Share this code with friends to join your party
                 </p>
               </div>
@@ -203,10 +203,10 @@ export default function PartyPage() {
           /* No Party - Show Join/Create Options */
           <div className="space-y-4">
             <div className="card text-center py-8">
-              <h2 className="text-xl font-bold text-[var(--foreground)] mb-2">
+              <h2 className="text-xl font-bold text-foreground mb-2">
                 Not in a party
               </h2>
-              <p className="text-sm text-[var(--foreground-secondary)] mb-6">
+              <p className="text-sm text-muted mb-6">
                 Create a new party or join an existing one
               </p>
 
@@ -219,7 +219,7 @@ export default function PartyPage() {
                 </button>
                 <button
                   onClick={() => setShowJoinModal(true)}
-                  className="flex-1 px-4 py-3 rounded-lg font-semibold transition-all bg-[var(--card-bg)] border border-[var(--border)] text-[var(--foreground)] hover:border-[var(--primary)]"
+                  className="flex-1 px-4 py-3 rounded-lg font-semibold transition-all bg-card border border-border text-foreground hover:border-primary"
                 >
                   Join Party
                 </button>
@@ -230,19 +230,19 @@ export default function PartyPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="card">
                 <div className="text-4xl mb-3">🚀</div>
-                <h3 className="text-lg font-bold text-[var(--foreground)] mb-2">
+                <h3 className="text-lg font-bold text-foreground mb-2">
                   Real-Time Tracking
                 </h3>
-                <p className="text-sm text-[var(--foreground-secondary)]">
+                <p className="text-sm text-muted">
                   See your crew&apos;s live location with ultra-low latency updates
                 </p>
               </div>
               <div className="card">
                 <div className="text-4xl mb-3">⚡</div>
-                <h3 className="text-lg font-bold text-[var(--foreground)] mb-2">
+                <h3 className="text-lg font-bold text-foreground mb-2">
                   6-Digit Codes
                 </h3>
-                <p className="text-sm text-[var(--foreground-secondary)]">
+                <p className="text-sm text-muted">
                   Simple codes make joining parties quick and easy
                 </p>
               </div>
@@ -259,17 +259,17 @@ export default function PartyPage() {
             />
             <div className="relative w-full max-w-md">
               <div className="card animate-scale-in">
-                <h3 className="text-xl font-bold text-[var(--foreground)] mb-2">
+                <h3 className="text-xl font-bold text-foreground mb-2">
                   Leave Party?
                 </h3>
-                <p className="text-sm text-[var(--foreground-secondary)] mb-6">
+                <p className="text-sm text-muted mb-6">
                   Are you sure you want to leave this party? You&apos;ll need the code
                   to rejoin.
                 </p>
                 <div className="flex gap-3">
                   <button
                     onClick={() => setShowLeaveConfirm(false)}
-                    className="flex-1 px-4 py-3 rounded-lg font-semibold transition-all bg-[var(--card-bg)] border border-[var(--border)] text-[var(--foreground)] hover:border-[var(--foreground-secondary)]"
+                    className="flex-1 px-4 py-3 rounded-lg font-semibold transition-all bg-card border border-border text-foreground hover:border-muted"
                   >
                     Cancel
                   </button>

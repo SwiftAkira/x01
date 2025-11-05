@@ -50,10 +50,10 @@ export default function CreatePartyModal({
       <div className="relative w-full max-w-md">
         <div className="card animate-scale-in">
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-[var(--foreground)] mb-2">
+            <h2 className="text-2xl font-bold text-foreground mb-2">
               Create Party
             </h2>
-            <p className="text-sm text-[var(--foreground-secondary)]">
+            <p className="text-sm text-muted">
               Generate a 6-digit code to share with your crew
             </p>
           </div>
@@ -62,7 +62,7 @@ export default function CreatePartyModal({
             <div>
               <label
                 htmlFor="partyName"
-                className="block text-sm font-semibold text-[var(--foreground)] mb-2"
+                className="block text-sm font-semibold text-foreground mb-2"
               >
                 Party Name (Optional)
               </label>
@@ -79,8 +79,8 @@ export default function CreatePartyModal({
             </div>
 
             {error && (
-              <div className="p-3 rounded-lg bg-[var(--danger)]/10 border border-[var(--danger)]/20">
-                <p className="text-sm text-[var(--danger)]">{error}</p>
+              <div className="p-3 rounded-lg bg-(--danger)/10 border border-(--danger)/20">
+                <p className="text-sm text-danger">{error}</p>
               </div>
             )}
 
@@ -88,7 +88,7 @@ export default function CreatePartyModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-3 rounded-lg font-semibold transition-all bg-[var(--card-bg)] border border-[var(--border)] text-[var(--foreground)] hover:border-[var(--foreground-secondary)]"
+                className="flex-1 px-4 py-3 rounded-lg font-semibold transition-all bg-card border border-border text-foreground hover:border-muted"
                 disabled={loading}
               >
                 Cancel
