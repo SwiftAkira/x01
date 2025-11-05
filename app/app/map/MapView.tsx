@@ -111,10 +111,10 @@ export default function MapView({
   useEffect(() => {
     if (center && mapRef.current && !fitBounds) {
       if (isNavigating) {
-        // Navigation mode: 3D tilted view following heading
+        // Navigation mode: 3D tilted view following heading with lane-level zoom
         mapRef.current.flyTo({
           center: [center[0], center[1]],
-          zoom: 17,
+          zoom: 18.5, // Lane-level zoom (18-20 is ideal for seeing lanes)
           pitch: 60, // Tilt the map to 3D perspective
           bearing: userHeading ?? 0, // Rotate map to face direction of travel
           duration: 500,
