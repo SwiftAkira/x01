@@ -875,23 +875,17 @@ export default function MapPage() {
         </div>
       </main>
 
-      {/* Party Members Overlay (only shown in party mode) */}
+      {/* Party Members Overlay - Compact (only shown in party mode) */}
       {userPartyId && partyMembers.length > 0 && (
-        <div className="fixed top-40 left-4 bg-[#0C0C0C]/90 border border-[#262626] rounded-lg p-4 backdrop-blur-sm max-w-xs z-50">
-          <h3 className="text-[#84CC16] font-bold mb-2">Party Members ({partyMembers.length})</h3>
-          <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+        <div className="fixed top-14 left-2 bg-[#0C0C0C]/90 border border-[#262626] rounded-lg p-2 backdrop-blur-sm max-w-40 z-50">
+          <h3 className="text-[#84CC16] font-semibold text-xs mb-1.5">Party ({partyMembers.length})</h3>
+          <div className="space-y-1 max-h-32 overflow-y-auto">
             {partyMembers.map((member) => (
-              <div key={member.id} className="flex items-center justify-between text-sm">
-                <span className="text-[#FAFAFA] font-medium">
+              <div key={member.id} className="flex items-center gap-1.5 text-xs">
+                <div className={`w-1.5 h-1.5 rounded-full ${member.is_online ? 'bg-[#22C55E]' : 'bg-[#DC2626]'}`} />
+                <span className="text-[#FAFAFA] truncate flex-1">
                   {member.profile.display_name || 'Anonymous'}
                   {member.user_id === userId && ' (You)'}
-                </span>
-                <span
-                  className={`text-xs px-2 py-1 rounded ${
-                    member.is_online ? 'bg-[#22C55E]/20 text-[#22C55E]' : 'bg-[#DC2626]/20 text-[#DC2626]'
-                  }`}
-                >
-                  {member.is_online ? 'Online' : 'Offline'}
                 </span>
               </div>
             ))}
