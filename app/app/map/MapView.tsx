@@ -1,8 +1,18 @@
 'use client'
 
-import { useEffect, useRef, useMemo } from 'react'
-import Map, { Marker, NavigationControl, GeolocateControl, MapRef } from 'react-map-gl/mapbox'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
+import Map, {
+  Marker,
+  NavigationControl,
+  GeolocateControl,
+  MapRef,
+  Source,
+  Layer,
+  type MapMouseEvent,
+} from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
+import type { FeatureCollection, LineString } from 'geojson'
+import type { NavigationStep } from '@/lib/types'
 
 export interface MarkerData {
   id: string
@@ -20,6 +30,13 @@ interface MapViewProps {
   zoom?: number
   onLocationUpdate?: (latitude: number, longitude: number) => void
   className?: string
+  route?: FeatureCollection<LineString>
+  destination?: {
+    name: string
+    coordinates: [number, number]
+  } | null
+  onSelectDestination?: (coordinates: [number, number]) => void
+  activeStep?: NavigationStep | null
 }
 
 interface GeolocateEvent {
@@ -39,7 +56,11 @@ export default function MapView({
   center,
   zoom = 13,
   onLocationUpdate,
-  className = ''
+  className = '',
+  route,
+  destination,
+  onSelectDestination,
+  activeStep,
 }: MapViewProps) {
   const mapRef = useRef<MapRef>(null)
   
@@ -66,6 +87,15 @@ export default function MapView({
       onLocationUpdate(e.coords.latitude, e.coords.longitude)
     }
   }
+
+  const handleMapClick = useCallback(
+    (event: MapMouseEvent) => {
+      if (!onSelectDestination) return
+      if ((event.originalEvent as MouseEvent | undefined)?.defaultPrevented) return
+      onSelectDestination([event.lngLat.lng, event.lngLat.lat])
+    },
+    [onSelectDestination]
+  )
 
   if (mapError) {
     return (
@@ -98,6 +128,8 @@ export default function MapView({
         mapboxAccessToken={mapboxToken}
         style={{ width: '100%', height: '100%' }}
         attributionControl={false}
+        cursor={onSelectDestination ? 'crosshair' : 'grab'}
+        onClick={handleMapClick}
       >
         {/* Navigation Controls */}
         <NavigationControl position="top-right" />
@@ -113,6 +145,22 @@ export default function MapView({
             borderColor: '#262626',
           }}
         />
+
+        {/* Active Route */}
+        {route && (
+          <Source id="navigation-route" type="geojson" data={route}>
+            <Layer
+              id="navigation-route-line"
+              type="line"
+              paint={{
+                'line-color': '#38BDF8',
+                'line-width': 5,
+                'line-opacity': 0.8,
+                'line-blur': 0.2,
+              }}
+            />
+          </Source>
+        )}
 
         {/* Party Member Markers */}
         {markers.map((marker) => (
@@ -159,6 +207,42 @@ export default function MapView({
             </div>
           </Marker>
         ))}
+
+        {/* Destination Marker */}
+        {destination && (
+          <Marker
+            longitude={destination.coordinates[0]}
+            latitude={destination.coordinates[1]}
+            anchor="bottom"
+          >
+            <div className="flex flex-col items-center">
+              <span className="mb-1 rounded bg-[#0C0C0C]/90 px-2 py-1 text-xs font-semibold text-[#FAFAFA]">
+                {destination.name}
+              </span>
+              <div className="h-9 w-9 rounded-full border-2 border-[#38BDF8] bg-[#0C0C0C] flex items-center justify-center shadow-lg">
+                <div className="h-2 w-2 rounded-full bg-[#38BDF8]" />
+              </div>
+            </div>
+          </Marker>
+        )}
+
+        {/* Upcoming Maneuver */}
+        {activeStep && (
+          <Marker
+            longitude={activeStep.maneuverLocation[0]}
+            latitude={activeStep.maneuverLocation[1]}
+            anchor="bottom"
+          >
+            <div className="flex flex-col items-center">
+              <span className="mb-1 rounded bg-[#0C0C0C]/90 px-2 py-1 text-xs font-semibold text-[#38BDF8]">
+                Next turn
+              </span>
+              <div className="h-6 w-6 rounded-full border-2 border-[#38BDF8] bg-[#1F2937] flex items-center justify-center">
+                <div className="h-1.5 w-1.5 rounded-full bg-[#38BDF8]" />
+              </div>
+            </div>
+          </Marker>
+        )}
       </Map>
 
       {/* Speed legend - bottom left */}

@@ -1,5 +1,7 @@
 // SpeedLink TypeScript Types
 
+import type { FeatureCollection, LineString } from 'geojson'
+
 // =============================================
 // Profile Types
 // =============================================
@@ -62,6 +64,35 @@ export interface PartyWithMembers extends Party {
 export interface PartyMemberWithLocation extends PartyMember {
   latest_location?: LocationUpdate;
   distance?: number; // Distance from current user in meters
+}
+
+// =============================================
+// Navigation Types
+// =============================================
+export interface NavigationStep {
+  id: string;
+  instruction: string;
+  distance: number;
+  duration: number;
+  name?: string | null;
+  maneuverType?: string | null;
+  maneuverModifier?: string | null;
+  maneuverLocation: [number, number];
+}
+
+export interface PartyNavigationState {
+  party_id: string | null;
+  created_by: string;
+  destination_name: string;
+  destination_address?: string | null;
+  destination_coordinates: [number, number];
+  distance_meters: number;
+  duration_seconds: number;
+  route_geojson: FeatureCollection<LineString>;
+  steps: NavigationStep[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 // =============================================
